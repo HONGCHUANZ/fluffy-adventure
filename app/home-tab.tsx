@@ -368,7 +368,7 @@ export default function HomeTab() {
                   {card.icon}
                 </div>
                 <div className="text-2xl font-black text-gray-800 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:from-gray-800 group-hover:to-gray-600 transition-all">
-                  {card.prefix || ""}<AnimatedCounter target={card.value} />{card.suffix || ""}
+                  <AnimatedCounter target={card.value} />{card.suffix || ""}
                 </div>
                 <div className="text-xs text-gray-400 mt-1 font-medium">{card.label}</div>
               </div>
