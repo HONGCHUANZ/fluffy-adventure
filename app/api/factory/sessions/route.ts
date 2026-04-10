@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createFactorySession, getFactorySessions, deleteFactorySession, getFactorySessionOutputs, saveFactoryOutputs } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');

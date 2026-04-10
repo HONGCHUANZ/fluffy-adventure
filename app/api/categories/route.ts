@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCategories, addCategory, removeCategory } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json({ categories: await getCategories() });
 }

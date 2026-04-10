@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getKeywords, insertContent, insertSearchRecord } from '@/lib/db';
 import { searchNotes } from '@/lib/xiaohongshu';
 
+export const dynamic = 'force-dynamic';
+
 interface KeywordDetail {
   keyword: string;
   fetched: number;

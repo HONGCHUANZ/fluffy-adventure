@@ -11,6 +11,14 @@ const isTurso = TURSO_URL && TURSO_TOKEN;
 // ─── Turso Client ─────────────────────────────────────────
 
 let tursoClient: ReturnType<typeof createClient> | null = null;
+let schemaInitialized = false;
+
+async function ensureTursoSchema() {
+  if (!schemaInitialized) {
+    schemaInitialized = true;
+    await initTursoSchema();
+  }
+}
 
 function getTurso() {
   if (!tursoClient) {
@@ -20,20 +28,24 @@ function getTurso() {
 }
 
 async function tursoExec(sql: string) {
+  await ensureTursoSchema();
   await getTurso().execute(sql);
 }
 
 async function tursoQuery<T = any>(sql: string, params?: (string | number)[]): Promise<T[]> {
+  await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rows as T[];
 }
 
 async function tursoRun(sql: string, params?: (string | number)[]): Promise<number> {
+  await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rowsAffected;
 }
 
 async function tursoGet<T = any>(sql: string, params?: (string | number)[]): Promise<T | undefined> {
+  await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rows[0] as T | undefined;
 }
@@ -246,6 +258,7 @@ export async function getDateCounts(categoryId: string, dateStart: number, dateE
 
 export async function insertContent(rows: any[]) {
   if (isTurso) {
+    await ensureTursoSchema();
     const db = getTurso();
     const results = await db.batch(
       rows.map(item => ({
@@ -328,6 +341,7 @@ export async function getFactorySessionOutputs(sessionId: string) {
 
 export async function saveFactoryOutputs(sessionId: string, outputs: { [platform: string]: string }) {
   if (isTurso) {
+    await ensureTursoSchema();
     const db = getTurso();
     await db.batch(
       Object.entries(outputs).map(([platform, content]) => ({

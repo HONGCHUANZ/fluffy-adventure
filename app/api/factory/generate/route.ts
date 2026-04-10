@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFactoryPrompt, saveFactoryOutputs } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
 
 const PLATFORM_SYSTEM_MAP: Record<string, string> = {

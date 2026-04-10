@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getContentByCategoryAndDate, getDateCounts } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 function parseDateStr(dateStr: string): { start: number; end: number } {
   const match = dateStr.match(/(\d+)月(\d+)日/);
   if (!match) return { start: 0, end: 0 };
