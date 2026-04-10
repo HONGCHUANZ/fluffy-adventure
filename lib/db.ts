@@ -81,10 +81,17 @@ async function initTursoSchema() {
 // ─── Local (better-sqlite3) ───────────────────────────────
 
 let localDb: any = null;
+let Database: any = null;
 
 function getLocalDb() {
-  if (!localDb) {
-    const Database = require('better-sqlite3');
+  if (!Database) {
+    try {
+      Database = require('better-sqlite3');
+    } catch {
+      Database = null;
+    }
+  }
+  if (!localDb && Database) {
     const path = require('path');
     const DB_PATH = path.join(process.cwd(), 'data', 'monitor.db');
     localDb = new Database(DB_PATH);
