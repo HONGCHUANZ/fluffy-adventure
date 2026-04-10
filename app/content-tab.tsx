@@ -5,7 +5,7 @@
 import { ArrowLeft, ArrowRight, Flame, ThumbsUp, MessageCircle, Repeat, Star, Sparkles, RefreshCw, ExternalLink, Check } from "lucide-react";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useStore } from "@/store/useStore";
-import { PLATFORMS, PLATFORM_COLORS } from "@/data/mock";
+import { PLATFORMS, PLATFORM_COLORS } from "@/lib/mock";
 
 interface ContentItem {
   id: string;

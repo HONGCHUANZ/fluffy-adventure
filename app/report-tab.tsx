@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Zap, TrendingUp, Calendar } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { getReportsByCategory } from "@/data/mock";
+import { getReportsByCategory } from "@/lib/mock";
 
 interface ReportData {
   id: string;

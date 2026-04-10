@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, Check, Save, RotateCcw } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { PLATFORMS, getMonitorConfig } from "@/data/mock";
+import { PLATFORMS, getMonitorConfig } from "@/lib/mock";
 
 interface KeywordWithPlatforms {
   keyword: string;
