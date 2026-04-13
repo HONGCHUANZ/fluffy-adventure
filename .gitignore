@@ -30,3 +30,12 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Cloudflare
+.open-next/
+
+# Temp images
+*.png
+*.jpg
+*.jpeg
+!latest.png
