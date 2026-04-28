@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { createWechatDraftSyncRecord } from "@/lib/db";
-import { refreshWechatAccessTokenIfNeeded } from "@/lib/wechat-auth";
+import { getWechatAccountById } from "@/lib/db";
 
-const WECHAT_MOCK_MODE = !process.env.WECHAT_COMPONENT_ACCESS_TOKEN;
+const ACCESS_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 type WechatRequestOptions = {
   method?: "GET" | "POST";
@@ -10,17 +10,6 @@ type WechatRequestOptions = {
   path: string;
   body?: BodyInit | null;
   headers?: Record<string, string>;
-};
-
-export type WechatDraftSyncInput = {
-  sessionId: string;
-  platform: string;
-  accountId: string;
-  title: string;
-  digest: string;
-  author: string;
-  html: string;
-  coverImageUrl: string;
 };
 
 function stripUnsupportedAttributes(html: string) {
@@ -34,44 +23,38 @@ function stripUnsupportedAttributes(html: string) {
 
 function extractImageUrls(html: string) {
   const matches = Array.from(html.matchAll(/<img[^>]+src="([^"]+)"/gi));
-  return matches.map((match) => match[1]).filter(Boolean);
+  return matches.map((m) => m[1]).filter(Boolean);
 }
 
-async function wechatRequest<T = any>({ method = "POST", accessToken, path, body, headers }: WechatRequestOptions): Promise<T> {
-  if (WECHAT_MOCK_MODE) {
-    return {} as T;
-  }
-
-  const response = await fetch(`https://api.weixin.qq.com${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}`, {
-    method,
-    headers,
-    body,
-  });
+async function wechatApiRequest<T = any>({
+  method = "POST",
+  accessToken,
+  path,
+  body,
+  headers,
+}: WechatRequestOptions): Promise<T> {
+  const url = `https://api.weixin.qq.com${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}`;
+  const response = await fetch(url, { method, headers, body });
 
   const contentType = response.headers.get("content-type") || "";
   const data = contentType.includes("application/json") ? await response.json() : await response.text();
+
   if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : data?.errmsg || "微信接口请求失败");
+    throw new Error(typeof data === "string" ? data : (data as any)?.errmsg || "微信接口请求失败");
   }
-  if (typeof data === "object" && data?.errcode) {
-    throw new Error(data.errmsg || "微信接口返回错误");
+  if (typeof data === "object" && (data as any)?.errcode) {
+    throw new Error((data as any).errmsg || "微信接口返回错误");
   }
   return data as T;
 }
 
 async function fetchRemoteFile(url: string) {
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`下载图片失败: ${url}`);
-  }
+  if (!response.ok) throw new Error(`下载图片失败: ${url}`);
   const arrayBuffer = await response.arrayBuffer();
   const contentType = response.headers.get("content-type") || "application/octet-stream";
-  const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
-  return {
-    buffer: Buffer.from(arrayBuffer),
-    contentType,
-    filename: `wechat-${randomUUID()}.${extension}`,
-  };
+  const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+  return { buffer: Buffer.from(arrayBuffer), contentType, filename: `wechat-${randomUUID()}.${ext}` };
 }
 
 function buildMultipartForm(fieldName: string, file: { buffer: Buffer; filename: string; contentType: string }) {
@@ -81,86 +64,117 @@ function buildMultipartForm(fieldName: string, file: { buffer: Buffer; filename:
   return formData;
 }
 
-export async function uploadImageToWechat(accountId: string, imageUrl: string) {
-  const account = await refreshWechatAccessTokenIfNeeded(accountId);
-  if (WECHAT_MOCK_MODE) {
-    return {
-      url: `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}wechat=1`,
-    };
-  }
+export type WechatAccountInfo = {
+  id: string;
+  accountName: string;
+  authorizerAppId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+};
 
-  const file = await fetchRemoteFile(imageUrl);
-  const body = buildMultipartForm("media", file);
-  return wechatRequest<{ url: string }>({
-    accessToken: account.accessToken,
-    path: "/cgi-bin/media/uploadimg",
-    body,
-  });
+export async function getAccessToken(account: WechatAccountInfo): Promise<string> {
+  if (account.expiresAt > Date.now() + ACCESS_TOKEN_REFRESH_BUFFER_MS) {
+    return account.accessToken;
+  }
+  return await refreshAccessToken(account);
 }
 
-export async function uploadPermanentThumb(accountId: string, imageUrl: string) {
-  const account = await refreshWechatAccessTokenIfNeeded(accountId);
-  if (WECHAT_MOCK_MODE) {
-    return { media_id: `mock-thumb-${randomUUID()}` };
-  }
+async function refreshAccessToken(account: WechatAccountInfo): Promise<string> {
+  const appId = process.env.WECHAT_APP_ID;
+  const appSecret = process.env.WECHAT_APP_SECRET;
+  if (!appId || !appSecret) throw new Error("请先在设置页配置公众号 AppID 和 AppSecret");
 
-  const file = await fetchRemoteFile(imageUrl);
-  const body = buildMultipartForm("media", file);
-  return wechatRequest<{ media_id: string }>({
-    accessToken: account.accessToken,
-    path: "/cgi-bin/material/add_material?type=thumb",
-    body,
-  });
+  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`;
+  const response = await fetch(url);
+  const data = await response.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
+
+  if (data.errcode) throw new Error(data.errmsg || `刷新 access_token 失败 (${data.errcode})`);
+  if (!data.access_token) throw new Error("获取 access_token 失败");
+
+  return data.access_token;
 }
 
-export async function normalizeHtmlForWechatDraft(accountId: string, html: string) {
+export async function uploadImageToWechat(account: WechatAccountInfo, imageUrl: string) {
+  const token = await getAccessToken(account);
+  const file = await fetchRemoteFile(imageUrl);
+  const body = buildMultipartForm("media", file);
+  return wechatApiRequest<{ url: string }>({ accessToken: token, path: "/cgi-bin/media/uploadimg", body });
+}
+
+export async function uploadPermanentThumb(account: WechatAccountInfo, imageUrl: string) {
+  const token = await getAccessToken(account);
+  const file = await fetchRemoteFile(imageUrl);
+  const body = buildMultipartForm("media", file);
+  return wechatApiRequest<{ media_id: string }>({ accessToken: token, path: "/cgi-bin/material/add_material?type=thumb", body });
+}
+
+export async function normalizeHtmlForWechatDraft(account: WechatAccountInfo, html: string) {
   let normalized = stripUnsupportedAttributes(html);
   const urls = Array.from(new Set(extractImageUrls(normalized)));
 
   for (const url of urls) {
-    const uploaded = await uploadImageToWechat(accountId, url);
-    normalized = normalized.split(url).join(uploaded.url);
+    try {
+      const uploaded = await uploadImageToWechat(account, url);
+      normalized = normalized.split(url).join(uploaded.url);
+    } catch {
+      // 如果图片上传失败，保留原 URL
+    }
   }
-
   return normalized;
 }
 
-export async function createWechatDraft(accountId: string, payload: {
+export async function createWechatDraft(account: WechatAccountInfo, payload: {
   title: string;
   author: string;
   digest: string;
   content: string;
   thumbMediaId: string;
 }) {
-  const account = await refreshWechatAccessTokenIfNeeded(accountId);
-  if (WECHAT_MOCK_MODE) {
-    return { media_id: `mock-draft-${randomUUID()}` };
-  }
-
-  return wechatRequest<{ media_id: string }>({
-    accessToken: account.accessToken,
+  const token = await getAccessToken(account);
+  return wechatApiRequest<{ media_id: string }>({
+    accessToken: token,
     path: "/cgi-bin/draft/add",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      articles: [
-        {
-          title: payload.title,
-          author: payload.author,
-          digest: payload.digest,
-          content: payload.content,
-          thumb_media_id: payload.thumbMediaId,
-          need_open_comment: 0,
-          only_fans_can_comment: 0,
-        },
-      ],
+      articles: [{
+        title: payload.title,
+        author: payload.author,
+        digest: payload.digest,
+        content: payload.content,
+        thumb_media_id: payload.thumbMediaId,
+        need_open_comment: 0,
+        only_fans_can_comment: 0,
+      }],
     }),
   });
 }
 
-export async function syncWechatDraft(input: WechatDraftSyncInput) {
-  const normalizedHtml = await normalizeHtmlForWechatDraft(input.accountId, input.html);
-  const thumb = await uploadPermanentThumb(input.accountId, input.coverImageUrl);
-  const created = await createWechatDraft(input.accountId, {
+export async function syncWechatDraft(input: {
+  accountId: string;
+  sessionId: string;
+  platform: string;
+  title: string;
+  digest: string;
+  author: string;
+  html: string;
+  coverImageUrl: string;
+}) {
+  const record = await getWechatAccountById(input.accountId);
+  if (!record) throw new Error("公众号账号不存在，请先在设置页配置");
+
+  const account: WechatAccountInfo = {
+    id: record.id,
+    accountName: record.account_name,
+    authorizerAppId: record.authorizer_appid,
+    accessToken: record.access_token,
+    refreshToken: record.refresh_token,
+    expiresAt: Number(record.expires_at || 0),
+  };
+
+  const normalizedHtml = await normalizeHtmlForWechatDraft(account, input.html);
+  const thumb = await uploadPermanentThumb(account, input.coverImageUrl);
+  const draft = await createWechatDraft(account, {
     title: input.title,
     author: input.author,
     digest: input.digest,
@@ -168,31 +182,25 @@ export async function syncWechatDraft(input: WechatDraftSyncInput) {
     thumbMediaId: thumb.media_id,
   });
 
-  const payloadSnapshot = {
-    title: input.title,
-    digest: input.digest,
-    author: input.author,
-    html: normalizedHtml,
-    coverImageUrl: input.coverImageUrl,
-  };
-
   await createWechatDraftSyncRecord({
     id: randomUUID(),
     session_id: input.sessionId,
     platform: input.platform,
     account_id: input.accountId,
-    draft_media_id: created.media_id,
+    draft_media_id: draft.media_id,
     title: input.title,
     digest: input.digest,
     cover_media_id: thumb.media_id,
     status: "success",
     error_message: "",
-    payload_snapshot: JSON.stringify(payloadSnapshot),
+    payload_snapshot: JSON.stringify({
+      title: input.title,
+      digest: input.digest,
+      author: input.author,
+      html: normalizedHtml,
+      coverImageUrl: input.coverImageUrl,
+    }),
   });
 
-  return {
-    draftMediaId: created.media_id,
-    coverMediaId: thumb.media_id,
-    content: normalizedHtml,
-  };
+  return { draftMediaId: draft.media_id, coverMediaId: thumb.media_id };
 }

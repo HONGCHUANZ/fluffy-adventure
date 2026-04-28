@@ -49,11 +49,16 @@ export default function FactorySettings() {
   const [prompts, setPrompts] = useState<{ [platform: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [wechatAccounts, setWechatAccounts] = useState<Array<{ id: string; accountName: string; principalName: string }>>([]);
-  const [wechatSettings, setWechatSettings] = useState<Record<string, string>>({});
+
+  // WeChat individual account config
+  const [wechatAppId, setWechatAppId] = useState("");
+  const [wechatAppSecret, setWechatAppSecret] = useState("");
+  const [wechatAuthor, setWechatAuthor] = useState("");
+  const [wechatConnected, setWechatConnected] = useState(false);
+  const [wechatAccountName, setWechatAccountName] = useState("");
   const [wechatLoading, setWechatLoading] = useState(false);
-  const [wechatSaving, setWechatSaving] = useState(false);
-  const [bindMessage, setBindMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [wechatVerifying, setWechatVerifying] = useState(false);
+  const [wechatMessage, setWechatMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/factory/prompts")
@@ -66,28 +71,13 @@ export default function FactorySettings() {
     fetch("/api/wechat/accounts")
       .then((res) => res.json())
       .then((data) => {
-        setWechatAccounts(data.accounts || []);
-        setWechatSettings(data.settings || {});
-
-        if (typeof window !== "undefined") {
-          const params = new URLSearchParams(window.location.search);
-          const bindResult = params.get("wechat_bind");
-          const accountName = params.get("wechat_account");
-          const message = params.get("message");
-          if (bindResult === "success" && accountName) {
-            setBindMessage({ type: "success", text: `公众号 "${accountName}" 绑定成功！` });
-          } else if (bindResult === "error") {
-            setBindMessage({ type: "error", text: `绑定失败：${decodeURIComponent(message || "未知错误")}` });
-          }
-          if (bindResult) {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("wechat_bind");
-            url.searchParams.delete("wechat_account");
-            url.searchParams.delete("message");
-            window.history.replaceState({}, "", url.toString());
-          }
+        const accounts = data.accounts || [];
+        if (accounts.length > 0) {
+          setWechatConnected(true);
+          setWechatAccountName(accounts[0].accountName);
         }
       })
+      .catch(() => {})
       .finally(() => setWechatLoading(false));
   }, []);
 
@@ -121,26 +111,29 @@ export default function FactorySettings() {
     });
   };
 
-  const handleBindWechat = async () => {
-    const res = await fetch("/api/wechat/bind/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ redirectTo: "/?tab=factory&view=settings" }),
-    });
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
+  const handleVerifyWechat = async () => {
+    if (!wechatAppId.trim() || !wechatAppSecret.trim()) {
+      setWechatMessage({ type: "error", text: "请先填写 AppID 和 AppSecret" });
+      return;
     }
-  };
-
-  const handleSaveWechatSettings = async () => {
-    setWechatSaving(true);
-    await fetch("/api/wechat/accounts", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings: wechatSettings }),
-    });
-    setWechatSaving(false);
+    setWechatVerifying(true);
+    setWechatMessage(null);
+    try {
+      const res = await fetch("/api/wechat/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appId: wechatAppId.trim(), appSecret: wechatAppSecret.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "验证失败");
+      setWechatConnected(true);
+      setWechatAccountName(data.account?.accountName || wechatAppId);
+      setWechatMessage({ type: "success", text: `公众号 "${data.account?.accountName || wechatAppId}" 配置成功！` });
+    } catch (err: any) {
+      setWechatMessage({ type: "error", text: err.message || "验证失败" });
+    } finally {
+      setWechatVerifying(false);
+    }
   };
 
   return (
@@ -180,116 +173,115 @@ export default function FactorySettings() {
         </div>
       </div>
 
-      {/* Prompt editors */}
+      {/* Content */}
       <div className="flex-1 overflow-auto p-8 space-y-8 max-w-4xl">
+        {/* WeChat 公众号配置区块 */}
         <div className="bg-white rounded-2xl p-7 shadow-sm border border-purple-50 space-y-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-purple-500" /> 公众号草稿箱同步
-              </h3>
-              <p className="text-xs text-gray-400 mt-2">在这里绑定公众号账号，并配置默认同步账号、作者和草稿摘要策略。</p>
-            </div>
-            <button
-              onClick={handleBindWechat}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all text-sm font-medium"
-            >
-              <Link2 className="w-4 h-4" /> 绑定公众号
-            </button>
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-purple-500" /> 公众号草稿箱同步（个人模式）
+            </h3>
+            <p className="text-xs text-gray-400 mt-2">直接填入公众号的 AppID 和 AppSecret，即可将内容同步到草稿箱，无需第三方平台。</p>
           </div>
 
           {wechatLoading ? (
             <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" /> 正在读取绑定状态...
+              <Loader2 className="w-4 h-4 animate-spin" /> 读取配置中...
             </div>
-          ) : (
+          ) : wechatConnected ? (
             <>
-              {bindMessage && (
-                <div className={`rounded-2xl px-4 py-3 text-sm font-medium ${bindMessage.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-600 border border-rose-200"}`}>
-                  {bindMessage.text}
+              <div className="flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-5 py-4">
+                <div className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-emerald-700">{wechatAccountName || "公众号"}</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">已连接 · 草稿箱同步功能可用</p>
                 </div>
-              )}
-
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-2 text-sm text-gray-500">
-                  <span>默认同步账号</span>
-                  <select
-                    value={wechatSettings.defaultAccountId || ""}
-                    onChange={(e) => setWechatSettings((prev) => ({ ...prev, defaultAccountId: e.target.value }))}
-                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
-                  >
-                    <option value="">未选择</option>
-                    {wechatAccounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.accountName}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-2 text-sm text-gray-500">
-                  <span>默认作者名</span>
-                  <input
-                    value={wechatSettings.defaultAuthor || ""}
-                    onChange={(e) => setWechatSettings((prev) => ({ ...prev, defaultAuthor: e.target.value }))}
-                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
-                    placeholder="同步时默认作者名"
-                  />
-                </label>
-
-                <label className="space-y-2 text-sm text-gray-500">
-                  <span>默认摘要策略</span>
-                  <select
-                    value={wechatSettings.defaultDigestMode || "auto"}
-                    onChange={(e) => setWechatSettings((prev) => ({ ...prev, defaultDigestMode: e.target.value }))}
-                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
-                  >
-                    <option value="auto">自动截取正文前 120 字</option>
-                    <option value="manual">手动填写优先</option>
-                  </select>
-                </label>
-
-                <label className="space-y-2 text-sm text-gray-500">
-                  <span>默认封面策略</span>
-                  <select
-                    value={wechatSettings.defaultCoverMode || "first-image"}
-                    onChange={(e) => setWechatSettings((prev) => ({ ...prev, defaultCoverMode: e.target.value }))}
-                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
-                  >
-                    <option value="first-image">使用正文首图</option>
-                    <option value="manual">每次手动指定</option>
-                  </select>
-                </label>
               </div>
 
-              <div className="rounded-xl bg-gray-50 px-4 py-4">
-                <div className="text-xs font-semibold text-gray-500 mb-3">已绑定账号</div>
-                {wechatAccounts.length === 0 ? (
-                  <div className="text-sm text-gray-400">当前还没有绑定任何公众号账号。</div>
-                ) : (
-                  <div className="space-y-2">
-                    {wechatAccounts.map((account) => (
-                      <div key={account.id} className="flex items-center justify-between rounded-xl bg-white px-4 py-3 text-sm text-gray-600 border border-gray-100">
-                        <span>{account.accountName}</span>
-                        <span className="text-xs text-gray-400">{account.principalName || "未返回主体信息"}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <label className="block space-y-2 text-sm text-gray-500">
+                <span>默认作者名</span>
+                <input
+                  value={wechatAuthor}
+                  onChange={(e) => setWechatAuthor(e.target.value)}
+                  className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
+                  placeholder="同步草稿时自动填入作者名"
+                />
+              </label>
 
-              <div className="flex justify-end">
+              <div className="rounded-xl bg-gray-50 px-5 py-4 space-y-4">
+                <div className="text-xs font-semibold text-gray-500">公众号凭证（已保存）</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1.5 text-xs text-gray-400">
+                    <span>AppID</span>
+                    <input
+                      value={wechatAppId}
+                      onChange={(e) => setWechatAppId(e.target.value)}
+                      className="w-full rounded-lg bg-white px-3 py-2.5 text-sm text-gray-600 outline-none border border-gray-100"
+                      placeholder="wx..."
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs text-gray-400">
+                    <span>AppSecret</span>
+                    <input
+                      value={wechatAppSecret}
+                      onChange={(e) => setWechatAppSecret(e.target.value)}
+                      type="password"
+                      className="w-full rounded-lg bg-white px-3 py-2.5 text-sm text-gray-600 outline-none border border-gray-100"
+                      placeholder="..."
+                    />
+                  </label>
+                </div>
                 <button
-                  onClick={handleSaveWechatSettings}
-                  disabled={wechatSaving}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-sm font-semibold hover:shadow-lg hover:shadow-purple-200/50 transition-all disabled:opacity-50"
+                  onClick={handleVerifyWechat}
+                  disabled={wechatVerifying}
+                  className="text-xs text-purple-500 hover:text-purple-700 font-medium"
                 >
-                  {wechatSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} 保存公众号设置
+                  {wechatVerifying ? "验证中..." : "更新凭证"}
                 </button>
               </div>
             </>
+          ) : (
+            <>
+              <p className="text-xs text-gray-400">去微信公众号后台获取 AppID 和 AppSecret：登录 mp.weixin.qq.com → 设置与开发 → 基本配置。</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block space-y-2 text-sm text-gray-500">
+                  <span>AppID</span>
+                  <input
+                    value={wechatAppId}
+                    onChange={(e) => setWechatAppId(e.target.value)}
+                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
+                    placeholder="wx开头的18位ID"
+                  />
+                </label>
+                <label className="block space-y-2 text-sm text-gray-500">
+                  <span>AppSecret</span>
+                  <input
+                    value={wechatAppSecret}
+                    onChange={(e) => setWechatAppSecret(e.target.value)}
+                    type="password"
+                    className="w-full rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-purple-300/40"
+                    placeholder="公众号 AppSecret"
+                  />
+                </label>
+              </div>
+              <button
+                onClick={handleVerifyWechat}
+                disabled={wechatVerifying || !wechatAppId.trim() || !wechatAppSecret.trim()}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-sm font-semibold hover:shadow-lg hover:shadow-purple-200/50 transition-all disabled:opacity-50"
+              >
+                {wechatVerifying ? <><Loader2 className="w-4 h-4 animate-spin" /> 验证中...</> : <><Link2 className="w-4 h-4" /> 验证并保存</>}
+              </button>
+            </>
+          )}
+
+          {wechatMessage && (
+            <div className={`rounded-2xl px-4 py-3 text-sm font-medium ${wechatMessage.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-600 border border-rose-200"}`}>
+              {wechatMessage.text}
+            </div>
           )}
         </div>
 
+        {/* 提示词配置区块 */}
         {PLATFORMS.map((platform) => (
           <div key={platform} className="bg-white rounded-2xl p-7 shadow-sm border border-purple-50">
             <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
