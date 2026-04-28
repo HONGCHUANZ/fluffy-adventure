@@ -10,6 +10,11 @@ interface SessionItem {
   input: string;
   platforms: string[];
   created_at: string;
+  latestWechatSync?: {
+    status: string;
+    title: string;
+    created_at: string;
+  } | null;
 }
 
 interface Props {
@@ -81,10 +86,10 @@ export default function FactoryHistory({ sessions, onRefresh }: Props) {
           </div>
         ) : (
           sessions.map((s) => (
-            <button
+            <div
               key={s.id}
               onClick={() => handleSelectSession(s)}
-              className={`w-full text-left px-4 py-3 rounded-xl transition-all group ${
+              className={`w-full text-left px-4 py-3 rounded-xl transition-all group cursor-pointer ${
                 factorySessionId === s.id
                   ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md shadow-purple-200/50"
                   : "text-gray-500 hover:bg-purple-50 hover:text-purple-600"
@@ -98,6 +103,11 @@ export default function FactoryHistory({ sessions, onRefresh }: Props) {
                     <span className={`text-xs ${factorySessionId === s.id ? "text-white/50" : "text-gray-300"}`}>·</span>
                     <span className={`text-xs ${factorySessionId === s.id ? "text-white/70" : "text-gray-400"}`}>{s.platforms.join(", ")}</span>
                   </div>
+                  {s.latestWechatSync && (
+                    <div className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] ${factorySessionId === s.id ? "bg-white/15 text-white/80" : s.latestWechatSync.status === "success" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-500"}`}>
+                      <span>{s.latestWechatSync.status === "success" ? "已同步草稿箱" : "同步失败"}</span>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={(e) => handleDeleteSession(s.id, e)}
@@ -106,7 +116,7 @@ export default function FactoryHistory({ sessions, onRefresh }: Props) {
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </button>
+            </div>
           ))
         )}
       </div>

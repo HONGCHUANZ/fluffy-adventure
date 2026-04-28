@@ -1,7 +1,7 @@
 // app/api/factory/sessions/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createFactorySession, getFactorySessions, deleteFactorySession, getFactorySessionOutputs, saveFactoryOutputs } from '@/lib/db';
+import { createFactorySession, getFactorySessions, deleteFactorySession, getFactorySessionOutputs, saveFactoryOutputs, getLatestWechatDraftSyncRecordBySession } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -11,17 +11,26 @@ export async function GET(request: NextRequest) {
   const sessionId = searchParams.get('sessionId');
 
   if (sessionId) {
-    const outputs = await getFactorySessionOutputs(sessionId);
-    return NextResponse.json({ outputs });
+    const [outputs, latestWechatSync] = await Promise.all([
+      getFactorySessionOutputs(sessionId),
+      getLatestWechatDraftSyncRecordBySession(sessionId),
+    ]);
+    return NextResponse.json({ outputs, latestWechatSync });
   }
 
   const sessions = await getFactorySessions(50);
-  const formatted = sessions.map((s: any) => ({
-    id: s.id,
-    input: s.input.slice(0, 60) + (s.input.length > 60 ? '...' : ''),
-    platforms: JSON.parse(s.selected_platforms),
-    created_at: s.created_at,
-  }));
+  const formatted = await Promise.all(
+    sessions.map(async (s: any) => {
+      const latestWechatSync = await getLatestWechatDraftSyncRecordBySession(s.id);
+      return {
+        id: s.id,
+        input: s.input.slice(0, 60) + (s.input.length > 60 ? '...' : ''),
+        platforms: JSON.parse(s.selected_platforms),
+        created_at: s.created_at,
+        latestWechatSync,
+      };
+    })
+  );
   return NextResponse.json({ sessions: formatted });
 }
 

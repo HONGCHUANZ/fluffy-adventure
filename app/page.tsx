@@ -9,6 +9,7 @@ import ReportTab from "./report-tab";
 import RecordsTab from "./records-tab";
 import FactoryTab from "./factory-tab";
 import SettingsTab from "./settings-tab";
+import WechatSyncModal from "./wechat-sync-modal";
 import { useStore } from "@/store/useStore";
 
 export default function Home() {
@@ -25,6 +26,7 @@ export default function Home() {
         {activeTab === "factory" && <FactoryTab />}
         {activeTab === "settings" && <SettingsTab />}
       </div>
+      <WechatSyncModal />
     </div>
   );
 }

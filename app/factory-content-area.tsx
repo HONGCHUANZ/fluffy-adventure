@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useStore } from "@/store/useStore";
-import { Copy, Edit3, Send, ArrowLeft } from "lucide-react";
+import { Copy, Edit3, Send, ArrowLeft, Wand2 } from "lucide-react";
 
 const FACTORY_PLATFORMS = ["公众号文章", "小红书笔记", "Twitter 推文", "视频脚本"];
 const PLATFORM_ICONS: Record<string, string> = {
@@ -18,13 +18,14 @@ const PLATFORM_CAN_PUBLISH = ["公众号文章", "小红书笔记", "Twitter 推
 
 export default function FactoryContentArea() {
   const {
-    factorySessionId, factoryActivePlatform, setFactoryActivePlatform, setFactoryView,
+    factorySessionId, factoryActivePlatform, setFactoryActivePlatform, setFactoryView, setWechatSyncDraft,
   } = useStore();
 
   const [outputs, setOutputs] = useState<{ [platform: string]: string }>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
+  const [latestWechatSync, setLatestWechatSync] = useState<{ status: string; title: string; created_at: string; error_message?: string } | null>(null);
 
   const activeOutput = outputs[factoryActivePlatform] || "";
 
@@ -35,6 +36,7 @@ export default function FactoryContentArea() {
       const res = await fetch(`/api/factory/sessions?sessionId=${factorySessionId}`);
       const data = await res.json();
       setOutputs(data.outputs || {});
+      setLatestWechatSync(data.latestWechatSync || null);
     } catch (e) {
       console.error("Failed to load outputs:", e);
     } finally {
@@ -51,7 +53,12 @@ export default function FactoryContentArea() {
   };
 
   const handlePublish = () => {
-    alert("发布功能待实现");
+    if (!factorySessionId || !activeOutput.trim()) return;
+    setWechatSyncDraft({
+      sessionId: factorySessionId,
+      platform: factoryActivePlatform,
+      html: activeOutput,
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -83,6 +90,11 @@ export default function FactoryContentArea() {
 
   const canPublish = PLATFORM_CAN_PUBLISH.includes(factoryActivePlatform);
 
+  const formatSyncTime = (iso: string) => {
+    const d = new Date(iso + "+08:00");
+    return `${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-purple-50/30 to-white">
       {/* Toolbar */}
@@ -100,6 +112,16 @@ export default function FactoryContentArea() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => {
+              const { setFactoryOptimizeSource, setFactoryView } = useStore.getState();
+              setFactoryOptimizeSource({ platform: factoryActivePlatform, content: activeOutput });
+              setFactoryView("optimize");
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-all"
+          >
+            <Wand2 className="w-4 h-4" /> 排版优化
+          </button>
+          <button
             onClick={startEdit}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-all"
           >
@@ -114,13 +136,28 @@ export default function FactoryContentArea() {
           {canPublish && (
             <button
               onClick={handlePublish}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:shadow-md transition-all"
+              disabled={!activeOutput.trim() || !factorySessionId}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Send className="w-4 h-4" /> 发布
+              <Send className="w-4 h-4" /> 同步草稿箱
             </button>
           )}
         </div>
       </div>
+
+      {/* Sync status */}
+      {latestWechatSync && (
+        <div className={`mx-7 mt-4 flex items-center justify-between rounded-2xl px-5 py-3 text-sm ${latestWechatSync.status === "success" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{latestWechatSync.status === "success" ? "已同步到草稿箱" : "同步失败"}</span>
+            {latestWechatSync.title && <span>· {latestWechatSync.title.slice(0, 20)}{latestWechatSync.title.length > 20 ? "…" : ""}</span>}
+          </div>
+          <div className="flex items-center gap-3">
+            {latestWechatSync.error_message && <span className="text-xs opacity-75">{latestWechatSync.error_message}</span>}
+            <span className="text-xs opacity-60">{formatSyncTime(latestWechatSync.created_at)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-7">

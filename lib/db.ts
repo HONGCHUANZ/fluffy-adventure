@@ -32,19 +32,19 @@ async function tursoExec(sql: string) {
   await getTurso().execute(sql);
 }
 
-async function tursoQuery<T = any>(sql: string, params?: (string | number)[]): Promise<T[]> {
+async function tursoQuery<T = any>(sql: string, params?: (string | number | null)[]): Promise<T[]> {
   await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rows as T[];
 }
 
-async function tursoRun(sql: string, params?: (string | number)[]): Promise<number> {
+async function tursoRun(sql: string, params?: (string | number | null)[]): Promise<number> {
   await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rowsAffected;
 }
 
-async function tursoGet<T = any>(sql: string, params?: (string | number)[]): Promise<T | undefined> {
+async function tursoGet<T = any>(sql: string, params?: (string | number | null)[]): Promise<T | undefined> {
   await ensureTursoSchema();
   const result = await getTurso().execute({ sql, args: params || [] });
   return result.rows[0] as T | undefined;
@@ -77,6 +77,12 @@ async function initTursoSchema() {
     `CREATE TABLE IF NOT EXISTS factory_sessions (id TEXT PRIMARY KEY, input TEXT NOT NULL, twitter_mode TEXT NOT NULL DEFAULT 'single', selected_platforms TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS factory_outputs (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, platform TEXT NOT NULL, content TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (session_id) REFERENCES factory_sessions(id) ON DELETE CASCADE)`,
     `CREATE TABLE IF NOT EXISTS factory_prompts (platform TEXT PRIMARY KEY, prompt TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS wechat_accounts (id TEXT PRIMARY KEY, account_name TEXT NOT NULL DEFAULT '', authorizer_appid TEXT NOT NULL UNIQUE, principal_name TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', service_type INTEGER DEFAULT 0, verify_type INTEGER DEFAULT 0, access_token TEXT NOT NULL DEFAULT '', refresh_token TEXT NOT NULL DEFAULT '', expires_at INTEGER DEFAULT 0, raw_profile TEXT NOT NULL DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE TABLE IF NOT EXISTS wechat_oauth_states (state TEXT PRIMARY KEY, redirect_to TEXT NOT NULL DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER DEFAULT 0, used_at DATETIME DEFAULT NULL)`,
+    `CREATE TABLE IF NOT EXISTS wechat_draft_sync_records (id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '公众号文章', account_id TEXT NOT NULL, draft_media_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', cover_media_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, error_message TEXT NOT NULL DEFAULT '', payload_snapshot TEXT NOT NULL DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE INDEX IF NOT EXISTS idx_wechat_draft_sync_session ON wechat_draft_sync_records(session_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_wechat_draft_sync_account ON wechat_draft_sync_records(account_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS wechat_integration_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`
   ], 'write');
 
   const defaults: Record<string, string> = {
@@ -128,6 +134,12 @@ function initLocalSchema() {
     CREATE TABLE IF NOT EXISTS factory_sessions (id TEXT PRIMARY KEY, input TEXT NOT NULL, twitter_mode TEXT NOT NULL DEFAULT 'single', selected_platforms TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS factory_outputs (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, platform TEXT NOT NULL, content TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (session_id) REFERENCES factory_sessions(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS factory_prompts (platform TEXT PRIMARY KEY, prompt TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS wechat_accounts (id TEXT PRIMARY KEY, account_name TEXT NOT NULL DEFAULT '', authorizer_appid TEXT NOT NULL UNIQUE, principal_name TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', service_type INTEGER DEFAULT 0, verify_type INTEGER DEFAULT 0, access_token TEXT NOT NULL DEFAULT '', refresh_token TEXT NOT NULL DEFAULT '', expires_at INTEGER DEFAULT 0, raw_profile TEXT NOT NULL DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS wechat_oauth_states (state TEXT PRIMARY KEY, redirect_to TEXT NOT NULL DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER DEFAULT 0, used_at DATETIME DEFAULT NULL);
+    CREATE TABLE IF NOT EXISTS wechat_draft_sync_records (id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '公众号文章', account_id TEXT NOT NULL, draft_media_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', cover_media_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, error_message TEXT NOT NULL DEFAULT '', payload_snapshot TEXT NOT NULL DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE INDEX IF NOT EXISTS idx_wechat_draft_sync_session ON wechat_draft_sync_records(session_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_wechat_draft_sync_account ON wechat_draft_sync_records(account_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS wechat_integration_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
 
   const defaults: Record<string, string> = {
@@ -398,4 +410,217 @@ export async function getAllFactoryPrompts() {
   const result: { [platform: string]: string } = {};
   for (const row of rows) result[row.platform] = row.prompt;
   return result;
+}
+
+type WechatAccountRecord = {
+  id: string;
+  account_name: string;
+  authorizer_appid: string;
+  principal_name: string;
+  avatar_url: string;
+  service_type: number;
+  verify_type: number;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  raw_profile: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type WechatOAuthStateRecord = {
+  state: string;
+  redirect_to: string;
+  expires_at: number;
+  used_at?: string | null;
+};
+
+type WechatDraftSyncRecordInput = {
+  id: string;
+  session_id: string;
+  platform: string;
+  account_id: string;
+  draft_media_id: string;
+  title: string;
+  digest: string;
+  cover_media_id: string;
+  status: string;
+  error_message: string;
+  payload_snapshot: string;
+};
+
+export async function saveWechatAccount(account: {
+  id: string;
+  account_name: string;
+  authorizer_appid: string;
+  principal_name?: string;
+  avatar_url?: string;
+  service_type?: number;
+  verify_type?: number;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  raw_profile?: string;
+}) {
+  const params = [
+    account.id,
+    account.account_name,
+    account.authorizer_appid,
+    account.principal_name || '',
+    account.avatar_url || '',
+    account.service_type || 0,
+    account.verify_type || 0,
+    account.access_token,
+    account.refresh_token,
+    account.expires_at,
+    account.raw_profile || '{}',
+  ];
+
+  if (isTurso) {
+    return tursoRun(
+      `INSERT INTO wechat_accounts (id, account_name, authorizer_appid, principal_name, avatar_url, service_type, verify_type, access_token, refresh_token, expires_at, raw_profile, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(authorizer_appid) DO UPDATE SET
+         id = excluded.id,
+         account_name = excluded.account_name,
+         principal_name = excluded.principal_name,
+         avatar_url = excluded.avatar_url,
+         service_type = excluded.service_type,
+         verify_type = excluded.verify_type,
+         access_token = excluded.access_token,
+         refresh_token = excluded.refresh_token,
+         expires_at = excluded.expires_at,
+         raw_profile = excluded.raw_profile,
+         updated_at = CURRENT_TIMESTAMP`,
+      params
+    );
+  }
+
+  return getLocalDb().prepare(
+    `INSERT INTO wechat_accounts (id, account_name, authorizer_appid, principal_name, avatar_url, service_type, verify_type, access_token, refresh_token, expires_at, raw_profile, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(authorizer_appid) DO UPDATE SET
+       id = excluded.id,
+       account_name = excluded.account_name,
+       principal_name = excluded.principal_name,
+       avatar_url = excluded.avatar_url,
+       service_type = excluded.service_type,
+       verify_type = excluded.verify_type,
+       access_token = excluded.access_token,
+       refresh_token = excluded.refresh_token,
+       expires_at = excluded.expires_at,
+       raw_profile = excluded.raw_profile,
+       updated_at = CURRENT_TIMESTAMP`
+  ).run(...params);
+}
+
+export async function getWechatAccounts() {
+  if (isTurso) return tursoQuery<WechatAccountRecord>('SELECT * FROM wechat_accounts ORDER BY updated_at DESC');
+  return getLocalDb().prepare('SELECT * FROM wechat_accounts ORDER BY updated_at DESC').all() as WechatAccountRecord[];
+}
+
+export async function getWechatAccountById(id: string) {
+  if (isTurso) return tursoGet<WechatAccountRecord>('SELECT * FROM wechat_accounts WHERE id = ?', [id]);
+  return getLocalDb().prepare('SELECT * FROM wechat_accounts WHERE id = ?').get(id) as WechatAccountRecord | undefined;
+}
+
+export async function getWechatAccountByAuthorizerAppId(authorizerAppId: string) {
+  if (isTurso) return tursoGet<WechatAccountRecord>('SELECT * FROM wechat_accounts WHERE authorizer_appid = ?', [authorizerAppId]);
+  return getLocalDb().prepare('SELECT * FROM wechat_accounts WHERE authorizer_appid = ?').get(authorizerAppId) as WechatAccountRecord | undefined;
+}
+
+export async function createWechatOAuthState(record: WechatOAuthStateRecord) {
+  if (isTurso) {
+    return tursoRun(
+      'INSERT OR REPLACE INTO wechat_oauth_states (state, redirect_to, expires_at, used_at) VALUES (?, ?, ?, ?)',
+      [record.state, record.redirect_to, record.expires_at, record.used_at || null]
+    );
+  }
+
+  return getLocalDb().prepare(
+    'INSERT OR REPLACE INTO wechat_oauth_states (state, redirect_to, expires_at, used_at) VALUES (?, ?, ?, ?)'
+  ).run(record.state, record.redirect_to, record.expires_at, record.used_at || null);
+}
+
+export async function getWechatOAuthState(state: string) {
+  if (isTurso) return tursoGet<WechatOAuthStateRecord>('SELECT * FROM wechat_oauth_states WHERE state = ?', [state]);
+  return getLocalDb().prepare('SELECT * FROM wechat_oauth_states WHERE state = ?').get(state) as WechatOAuthStateRecord | undefined;
+}
+
+export async function consumeWechatOAuthState(state: string) {
+  if (isTurso) {
+    await tursoRun('UPDATE wechat_oauth_states SET used_at = CURRENT_TIMESTAMP WHERE state = ? AND used_at IS NULL', [state]);
+    return tursoGet<WechatOAuthStateRecord>('SELECT * FROM wechat_oauth_states WHERE state = ?', [state]);
+  }
+
+  const db = getLocalDb();
+  db.prepare('UPDATE wechat_oauth_states SET used_at = CURRENT_TIMESTAMP WHERE state = ? AND used_at IS NULL').run(state);
+  return db.prepare('SELECT * FROM wechat_oauth_states WHERE state = ?').get(state) as WechatOAuthStateRecord | undefined;
+}
+
+export async function saveWechatIntegrationSetting(key: string, value: string) {
+  if (isTurso) {
+    return tursoRun('INSERT OR REPLACE INTO wechat_integration_settings (key, value) VALUES (?, ?)', [key, value]);
+  }
+
+  return getLocalDb().prepare('INSERT OR REPLACE INTO wechat_integration_settings (key, value) VALUES (?, ?)').run(key, value);
+}
+
+export async function getWechatIntegrationSetting(key: string) {
+  if (isTurso) {
+    const row = await tursoGet<{ value: string }>('SELECT value FROM wechat_integration_settings WHERE key = ?', [key]);
+    return row?.value;
+  }
+
+  const row = getLocalDb().prepare('SELECT value FROM wechat_integration_settings WHERE key = ?').get(key) as { value?: string } | undefined;
+  return row?.value;
+}
+
+export async function getAllWechatIntegrationSettings() {
+  if (isTurso) {
+    const rows = await tursoQuery<{ key: string; value: string }>('SELECT key, value FROM wechat_integration_settings');
+    const result: Record<string, string> = {};
+    for (const row of rows) result[row.key] = row.value;
+    return result;
+  }
+
+  const rows = getLocalDb().prepare('SELECT key, value FROM wechat_integration_settings').all() as Array<{ key: string; value: string }>;
+  const result: Record<string, string> = {};
+  for (const row of rows) result[row.key] = row.value;
+  return result;
+}
+
+export async function createWechatDraftSyncRecord(record: WechatDraftSyncRecordInput) {
+  const params = [
+    record.id,
+    record.session_id,
+    record.platform,
+    record.account_id,
+    record.draft_media_id,
+    record.title,
+    record.digest,
+    record.cover_media_id,
+    record.status,
+    record.error_message,
+    record.payload_snapshot,
+  ];
+
+  if (isTurso) {
+    return tursoRun(
+      'INSERT INTO wechat_draft_sync_records (id, session_id, platform, account_id, draft_media_id, title, digest, cover_media_id, status, error_message, payload_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      params
+    );
+  }
+
+  return getLocalDb().prepare(
+    'INSERT INTO wechat_draft_sync_records (id, session_id, platform, account_id, draft_media_id, title, digest, cover_media_id, status, error_message, payload_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(...params);
+}
+
+export async function getLatestWechatDraftSyncRecordBySession(sessionId: string) {
+  if (isTurso) {
+    return tursoGet('SELECT * FROM wechat_draft_sync_records WHERE session_id = ? ORDER BY created_at DESC LIMIT 1', [sessionId]);
+  }
+
+  return getLocalDb().prepare('SELECT * FROM wechat_draft_sync_records WHERE session_id = ? ORDER BY created_at DESC LIMIT 1').get(sessionId);
 }

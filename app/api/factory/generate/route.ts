@@ -2,10 +2,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getFactoryPrompt, saveFactoryOutputs } from '@/lib/db';
+import { callMiniMax } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
-
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
 
 const PLATFORM_SYSTEM_MAP: Record<string, string> = {
   '公众号文章': '你是资深公众号作者，擅长写深度技术文章。',
@@ -13,32 +12,6 @@ const PLATFORM_SYSTEM_MAP: Record<string, string> = {
   'Twitter 推文': '你是Twitter科技博主，擅长写高互动推文。',
   '视频脚本': '你是短视频脚本策划师，擅长写口播脚本。',
 };
-
-async function callMiniMax(systemPrompt: string, userPrompt: string): Promise<string> {
-  const response = await fetch('https://api.minimax.chat/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MINIMAX_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'MiniMax-M2.1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`MiniMax API error: ${response.status} ${error}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
-}
 
 export async function POST(request: NextRequest) {
   try {

@@ -10,12 +10,25 @@ const tabs = [
   { key: "report", label: "选题报告" },
   { key: "records", label: "记录" },
   { key: "settings", label: "监控设置" },
+  { key: "optimize", label: "📝 排版优化" },
 ];
 
 const specialTab = { key: "factory", label: "✨ 内容工厂" };
 
 export default function TabNav() {
-  const { activeTab, setActiveTab } = useStore();
+  const {
+    activeTab,
+    factoryView,
+    setActiveTab,
+    setFactoryOptimizeSource,
+    setFactoryView,
+  } = useStore();
+
+  const openOptimize = () => {
+    setFactoryOptimizeSource({ platform: "公众号文章", content: "" });
+    setFactoryView("optimize");
+    setActiveTab("factory");
+  };
 
   return (
     <div className="flex items-center h-16 px-8">
@@ -23,14 +36,15 @@ export default function TabNav() {
         {tabs.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => (tab.key === "optimize" ? openOptimize() : setActiveTab(tab.key))}
             className={`px-6 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              activeTab === tab.key
+              ((tab.key === "optimize" && activeTab === "factory" && factoryView === "optimize") ||
+              (tab.key !== "optimize" && activeTab === tab.key))
                 ? "bg-white text-accent shadow-sm"
                 : "text-gray-400 hover:text-gray-600 hover:bg-white/50"
             }`}
           >
-            {tab.label}
+            {tab.key === "optimize" ? "📝 排版优化" : tab.label}
           </button>
         ))}
       </div>

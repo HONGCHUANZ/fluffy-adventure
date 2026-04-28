@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useStore } from "@/store/useStore";
-import { Settings, Sparkles, Clock } from "lucide-react";
+import { Settings, Sparkles, Clock, Wand2 } from "lucide-react";
 
 const FACTORY_PLATFORMS = ["公众号文章", "小红书笔记", "Twitter 推文", "视频脚本"];
 const PLATFORM_ICONS: Record<string, string> = {
@@ -18,7 +18,7 @@ export default function FactoryInput() {
   const {
     factoryInput, factoryPlatforms, factoryTwitterMode,
     setFactoryInput, toggleFactoryPlatform, setFactoryTwitterMode,
-    setFactoryView, setFactorySessionId,
+    setFactoryView, setFactorySessionId, setFactoryOptimizeSource,
   } = useStore();
 
   const [generating, setGenerating] = useState(false);
@@ -68,6 +68,15 @@ export default function FactoryInput() {
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-purple-50/50 via-white to-white">
       <div className="absolute right-8 flex gap-2" style={{ top: "68px" }}>
+        <button
+          onClick={() => {
+            setFactoryOptimizeSource({ platform: "公众号文章", content: factoryInput });
+            setFactoryView("optimize");
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl text-xs text-gray-400 hover:text-purple-600 hover:shadow-sm transition-all"
+        >
+          <Wand2 className="w-3.5 h-3.5" /> 排版优化
+        </button>
         <button
           onClick={() => setFactoryView("editor")}
           className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl text-xs text-gray-400 hover:text-purple-600 hover:shadow-sm transition-all"
