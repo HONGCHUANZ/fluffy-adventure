@@ -37,14 +37,21 @@ async function wechatApiRequest<T = any>({
   const url = `https://api.weixin.qq.com${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}`;
   const response = await fetch(url, { method, headers, body });
 
+  let data: any;
   const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json") ? await response.json() : await response.text();
+  try {
+    data = contentType.includes("application/json") ? await response.json() : await response.text();
+  } catch {
+    const text = await response.text().catch(() => "(无法读取响应体)");
+    throw new Error(`微信接口响应解析失败 [${response.status}]: ${text.slice(0, 200)}`);
+  }
 
   if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : (data as any)?.errmsg || "微信接口请求失败");
+    const msg = typeof data === "object" && data?.errmsg ? data.errmsg : typeof data === "string" ? data : `微信接口请求失败 [${response.status}]`;
+    throw new Error(msg);
   }
-  if (typeof data === "object" && (data as any)?.errcode) {
-    throw new Error((data as any).errmsg || "微信接口返回错误");
+  if (typeof data === "object" && data?.errcode && data.errcode !== 0) {
+    throw new Error(data.errmsg || `微信接口返回错误 [${data.errcode}]`);
   }
   return data as T;
 }
@@ -117,11 +124,13 @@ export async function uploadImageToWechat(account: WechatAccountInfo, imageUrl: 
   return wechatApiRequest<{ url: string }>({ accessToken: token, path: "/cgi-bin/media/uploadimg", body });
 }
 
-export async function uploadPermanentThumb(account: WechatAccountInfo, imageUrl: string) {
+export async function uploadPermanentThumb(account: WechatAccountInfo, imageUrl: string): Promise<{ media_id: string }> {
   const token = await getAccessToken(account);
   const file = await fetchRemoteFile(imageUrl);
   const body = buildMultipartForm("media", file);
-  return wechatApiRequest<{ media_id: string }>({ accessToken: token, path: "/cgi-bin/material/add_material?type=thumb", body });
+  const result = await wechatApiRequest<{ media_id?: string }>({ accessToken: token, path: "/cgi-bin/material/add_material?type=thumb", body });
+  if (!result.media_id) throw new Error("封面上传成功但未返回 media_id，请尝试更换封面图");
+  return { media_id: result.media_id };
 }
 
 export async function normalizeHtmlForWechatDraft(account: WechatAccountInfo, html: string) {
