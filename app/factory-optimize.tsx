@@ -136,6 +136,7 @@ export default function FactoryOptimize() {
     setFactoryView,
     setFactoryOptimizeSource,
     setWechatSyncDraft,
+    setFactorySessionId,
   } = useStore();
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -150,6 +151,7 @@ export default function FactoryOptimize() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [lastTheme, setLastTheme] = useState<string>("");
   const [editorMode, setEditorMode] = useState<"plain" | "rich">("rich");
+  const [bootstrappingSession, setBootstrappingSession] = useState(false);
   const [options, setOptions] = useState({
     theme: "dark" as ThemeKey,
     style: "casual",
@@ -465,28 +467,75 @@ export default function FactoryOptimize() {
     setTimeout(() => setCopied((current) => (current === mode ? null : current)), 2000);
   };
 
-  const handleSave = async () => {
-    if (!factorySessionId) {
-      setSaveMessage("请先选择一个创作会话");
-      return;
+  const ensureOptimizeSession = useCallback(async (contentToSave: string) => {
+    if (factorySessionId) return factorySessionId;
+
+    const platform = factoryOptimizeSource?.platform || "公众号文章";
+    const inputSeed = getCurrentInput().trim() || factoryOptimizeSource?.content?.trim() || contentToSave;
+
+    setBootstrappingSession(true);
+    try {
+      const sessionRes = await fetch("/api/factory/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: inputSeed,
+          twitterMode: "single",
+          platforms: [platform],
+        }),
+      });
+      const sessionData = await sessionRes.json();
+      if (!sessionRes.ok || !sessionData.sessionId) {
+        throw new Error(sessionData.error || "创建创作记录失败，请重试");
+      }
+
+      const nextSessionId = sessionData.sessionId as string;
+      const saveRes = await fetch("/api/factory/sessions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: nextSessionId,
+          platform,
+          content: contentToSave,
+        }),
+      });
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok) {
+        throw new Error(saveData.error || "保存创作记录失败，请重试");
+      }
+
+      setFactorySessionId(nextSessionId);
+      return nextSessionId;
+    } finally {
+      setBootstrappingSession(false);
     }
+  }, [factoryOptimizeSource?.content, factoryOptimizeSource?.platform, factorySessionId, getCurrentInput, setFactorySessionId]);
+
+  const handleSave = async () => {
+    const contentToSave = (showHtml ? output : input).trim();
+    if (!contentToSave) return;
 
     setSaving(true);
-    setSaveMessage(null);
+    setSaveMessage(factorySessionId ? null : "正在创建创作记录...");
     try {
-      const contentToSave = (showHtml ? output : input).trim();
+      const sessionId = await ensureOptimizeSession(contentToSave);
+      if (sessionId !== factorySessionId) {
+        setSaveMessage("已创建创作记录并保存");
+        return;
+      }
+
       await fetch("/api/factory/sessions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: factorySessionId,
+          sessionId,
           platform: factoryOptimizeSource?.platform || "公众号文章",
           content: contentToSave,
         }),
       });
       setSaveMessage("已保存到当前创作记录");
-    } catch {
-      setSaveMessage("保存失败，请重试");
+    } catch (error: any) {
+      setSaveMessage(error?.message || "保存失败，请重试");
     } finally {
       setSaving(false);
     }
@@ -497,13 +546,23 @@ export default function FactoryOptimize() {
     setFactoryView("editor");
   };
 
-  const handleSyncDraft = () => {
-    if (!factorySessionId || !output.trim()) return;
-    setWechatSyncDraft({
-      sessionId: factorySessionId,
-      platform: factoryOptimizeSource?.platform || "公众号文章",
-      html: output,
-    });
+  const handleSyncDraft = async () => {
+    if (!output.trim()) return;
+
+    setSaveMessage(factorySessionId ? null : "正在创建创作记录...");
+    try {
+      const sessionId = await ensureOptimizeSession(output);
+      setWechatSyncDraft({
+        sessionId,
+        platform: factoryOptimizeSource?.platform || "公众号文章",
+        html: output,
+      });
+      if (!factorySessionId) {
+        setSaveMessage("已创建创作记录，请继续填写草稿信息");
+      }
+    } catch (error: any) {
+      setSaveMessage(error?.message || "创建创作记录失败，请重试");
+    }
   };
 
   useEffect(() => {
@@ -537,17 +596,17 @@ export default function FactoryOptimize() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleSave}
-            disabled={saving || !factorySessionId || !(showHtml ? output : input).trim()}
+            disabled={saving || bootstrappingSession || !(showHtml ? output : input).trim()}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" /> {saving ? "保存中..." : "保存"}
+            <Save className="w-4 h-4" /> {saving || bootstrappingSession ? "保存中..." : "保存"}
           </button>
           <button
             onClick={handleSyncDraft}
-            disabled={!factorySessionId || !output.trim()}
+            disabled={bootstrappingSession || !output.trim()}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Smartphone className="w-4 h-4" /> 同步到草稿箱
+            <Smartphone className="w-4 h-4" /> {bootstrappingSession ? "创建中..." : "同步到草稿箱"}
           </button>
           <button
             onClick={() => handleCopy("rich")}

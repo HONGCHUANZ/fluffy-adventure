@@ -72,6 +72,10 @@ export default function FactorySettings() {
       .then((res) => res.json())
       .then((data) => {
         const accounts = data.accounts || [];
+        const settings = data.settings || {};
+        if (settings.wechatAppId) setWechatAppId(settings.wechatAppId);
+        if (settings.wechatAppSecret) setWechatAppSecret(settings.wechatAppSecret);
+        if (settings.wechatAuthor) setWechatAuthor(settings.wechatAuthor);
         if (accounts.length > 0) {
           setWechatConnected(true);
           setWechatAccountName(accounts[0].accountName);

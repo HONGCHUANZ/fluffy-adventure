@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
-import { createWechatDraftSyncRecord } from "@/lib/db";
+import { createWechatDraftSyncRecord, saveWechatAccount } from "@/lib/db";
 import { getWechatAccountById } from "@/lib/db";
+import { getWechatAccountsInfo } from "@/lib/wechat-auth";
 
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -81,8 +82,9 @@ export async function getAccessToken(account: WechatAccountInfo): Promise<string
 }
 
 async function refreshAccessToken(account: WechatAccountInfo): Promise<string> {
-  const appId = process.env.WECHAT_APP_ID;
-  const appSecret = process.env.WECHAT_APP_SECRET;
+  const { settings } = await getWechatAccountsInfo();
+  const appId = settings.wechatAppId || account.authorizerAppId || "";
+  const appSecret = settings.wechatAppSecret || "";
   if (!appId || !appSecret) throw new Error("请先在设置页配置公众号 AppID 和 AppSecret");
 
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`;
@@ -91,6 +93,18 @@ async function refreshAccessToken(account: WechatAccountInfo): Promise<string> {
 
   if (data.errcode) throw new Error(data.errmsg || `刷新 access_token 失败 (${data.errcode})`);
   if (!data.access_token) throw new Error("获取 access_token 失败");
+
+  const nextExpiresAt = Date.now() + (data.expires_in || 7200) * 1000;
+  await saveWechatAccount({
+    id: account.id,
+    account_name: account.accountName,
+    authorizer_appid: account.authorizerAppId,
+    principal_name: "",
+    avatar_url: "",
+    access_token: data.access_token,
+    refresh_token: account.refreshToken,
+    expires_at: nextExpiresAt,
+  });
 
   return data.access_token;
 }

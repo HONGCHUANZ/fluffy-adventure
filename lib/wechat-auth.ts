@@ -33,6 +33,13 @@ function toAccount(record: any): WechatAccountInfo {
   };
 }
 
+async function getStoredWechatCredentials() {
+  const settings = await getAllWechatIntegrationSettings();
+  const appId = settings.wechatAppId || process.env.WECHAT_APP_ID || "";
+  const appSecret = settings.wechatAppSecret || process.env.WECHAT_APP_SECRET || "";
+  return { appId, appSecret, settings };
+}
+
 export async function saveWechatAccountInfo(account: WechatAccountInfo) {
   await saveWechatAccount({
     id: account.id,
@@ -78,8 +85,7 @@ export async function getAccessToken(accountId: string) {
 }
 
 export async function refreshAccessToken(accountId: string): Promise<string> {
-  const appId = process.env.WECHAT_APP_ID;
-  const appSecret = process.env.WECHAT_APP_SECRET;
+  const { appId, appSecret } = await getStoredWechatCredentials();
 
   if (!appId || !appSecret) {
     throw new Error("请先在设置页配置公众号 AppID 和 AppSecret");
@@ -102,15 +108,19 @@ export async function refreshAccessToken(accountId: string): Promise<string> {
   return data.access_token;
 }
 
-export async function verifyAndSaveWechatCredentials(): Promise<WechatAccountInfo> {
-  const appId = process.env.WECHAT_APP_ID;
-  const appSecret = process.env.WECHAT_APP_SECRET;
+export async function verifyAndSaveWechatCredentials(input?: { appId?: string; appSecret?: string }): Promise<WechatAccountInfo> {
+  const appId = input?.appId?.trim() || "";
+  const appSecret = input?.appSecret?.trim() || "";
 
   if (!appId || !appSecret) {
     throw new Error("请先配置公众号 AppID 和 AppSecret");
   }
 
-  // 验证凭证是否有效，同时获取 access_token
+  await saveWechatSettings({
+    wechatAppId: appId,
+    wechatAppSecret: appSecret,
+  });
+
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`;
   const response = await fetch(url);
   const data = await response.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
@@ -118,10 +128,9 @@ export async function verifyAndSaveWechatCredentials(): Promise<WechatAccountInf
   if (data.errcode) throw new Error(data.errmsg || `AppID 或 AppSecret 无效 (${data.errcode})`);
   if (!data.access_token) throw new Error("获取 access_token 失败");
 
-  // 查询账号基本信息
   const infoUrl = `https://api.weixin.qq.com/cgi-bin/get_current_selfmenu_info?access_token=${encodeURIComponent(data.access_token)}`;
   const infoResponse = await fetch(infoUrl);
-  const infoData = await infoResponse.json() as { errcode?: number; nickname?: string; head_img?: string; };
+  const infoData = await infoResponse.json() as { errcode?: number; nickname?: string; head_img?: string };
 
   const existing = (await getWechatAccounts()).find((a: any) => a.authorizer_appid === appId);
   const account: WechatAccountInfo = {
@@ -137,8 +146,7 @@ export async function verifyAndSaveWechatCredentials(): Promise<WechatAccountInf
 
   await saveWechatAccountInfo(account);
 
-  // 设为默认账号
-  const settings = await getAllWechatIntegrationSettings();
+  const { settings } = await getStoredWechatCredentials();
   if (!settings.defaultAccountId) {
     await saveWechatIntegrationSetting("defaultAccountId", account.id);
   }

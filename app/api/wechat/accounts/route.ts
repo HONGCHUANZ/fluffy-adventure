@@ -31,7 +31,10 @@ export async function PUT(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const account = await verifyAndSaveWechatCredentials();
+    const body = await request.json();
+    const appId = typeof body?.appId === "string" ? body.appId : "";
+    const appSecret = typeof body?.appSecret === "string" ? body.appSecret : "";
+    const account = await verifyAndSaveWechatCredentials({ appId, appSecret });
     return NextResponse.json({ message: "OK", account: { id: account.id, accountName: account.accountName } });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "验证公众号凭证失败" }, { status: 500 });
