@@ -61,7 +61,8 @@ async function fetchRemoteFile(url: string) {
 function buildMultipartForm(fieldName: string, file: { buffer: Buffer; filename: string; contentType: string }) {
   const formData = new FormData();
   const bytes = new Uint8Array(file.buffer);
-  formData.append(fieldName, new Blob([bytes], { type: file.contentType }), file.filename);
+  const blob = new Blob([bytes], { type: file.contentType });
+  formData.append(fieldName, blob, file.filename);
   return formData;
 }
 
