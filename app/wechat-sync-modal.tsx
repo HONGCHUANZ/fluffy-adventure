@@ -79,10 +79,8 @@ export default function WechatSyncModal() {
 
   const hasAccounts = accounts.length > 0;
   const canSubmit = useMemo(() => {
-    return !!wechatSyncDraft && !!form.accountId && !!form.title.trim() && !!form.coverImageUrl.trim();
-  }, [form.accountId, form.coverImageUrl, form.title, wechatSyncDraft]);
-
-  if (!wechatSyncDraft) return null;
+    return !!wechatSyncDraft && !!form.accountId && !!form.title.trim();
+  }, [form.accountId, form.title, wechatSyncDraft]);
 
   const close = () => {
     setWechatSyncDraft(null);

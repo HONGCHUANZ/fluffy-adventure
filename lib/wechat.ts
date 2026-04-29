@@ -182,7 +182,7 @@ export async function syncWechatDraft(input: {
   digest: string;
   author: string;
   html: string;
-  coverImageUrl: string;
+  coverImageUrl?: string;
 }) {
   const record = await getWechatAccountById(input.accountId);
   if (!record) throw new Error("公众号账号不存在，请先在设置页配置");
@@ -197,13 +197,24 @@ export async function syncWechatDraft(input: {
   };
 
   const normalizedHtml = await normalizeHtmlForWechatDraft(account, input.html);
-  const thumb = await uploadPermanentThumb(account, input.coverImageUrl);
+
+  let thumbMediaId = "";
+  if (input.coverImageUrl?.trim()) {
+    try {
+      const thumb = await uploadPermanentThumb(account, input.coverImageUrl.trim());
+      thumbMediaId = thumb.media_id;
+    } catch (err: any) {
+      // 如果封面上传失败，尝试不传封面继续（thumb_media_id 为空）
+      console.warn(`封面上传失败，将使用空封面创建草稿: ${err.message}`);
+    }
+  }
+
   const draft = await createWechatDraft(account, {
     title: input.title,
     author: input.author,
     digest: input.digest,
     content: normalizedHtml,
-    thumbMediaId: thumb.media_id,
+    thumbMediaId,
   });
 
   await createWechatDraftSyncRecord({
@@ -214,7 +225,7 @@ export async function syncWechatDraft(input: {
     draft_media_id: draft.media_id,
     title: input.title,
     digest: input.digest,
-    cover_media_id: thumb.media_id,
+    cover_media_id: thumbMediaId,
     status: "success",
     error_message: "",
     payload_snapshot: JSON.stringify({
@@ -226,5 +237,5 @@ export async function syncWechatDraft(input: {
     }),
   });
 
-  return { draftMediaId: draft.media_id, coverMediaId: thumb.media_id };
+  return { draftMediaId: draft.media_id, coverMediaId: thumbMediaId };
 }

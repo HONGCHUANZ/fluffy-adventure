@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
     coverImageUrl?: string;
   };
 
-  if (!sessionId || !accountId || !title || !html || !coverImageUrl) {
-    return NextResponse.json({ error: "sessionId, accountId, title, html, and coverImageUrl are required" }, { status: 400 });
+  if (!sessionId || !accountId || !title || !html) {
+    return NextResponse.json({ error: "sessionId, accountId, title, and html are required" }, { status: 400 });
   }
 
   try {
