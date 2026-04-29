@@ -60,10 +60,11 @@ export default function WechatSyncModal() {
         setAccounts(nextAccounts);
         setSettings(nextSettings);
 
-        const title = wechatSyncDraft.title || buildFallbackTitle(wechatSyncDraft.html, "公众号草稿");
-        const plainText = stripHtml(wechatSyncDraft.html);
+        const html = wechatSyncDraft.html || "";
+        const title = wechatSyncDraft.title || buildFallbackTitle(html, "公众号草稿");
+        const plainText = stripHtml(html);
         const digest = wechatSyncDraft.digest || plainText.slice(0, 120);
-        const coverImageUrl = wechatSyncDraft.coverImageUrl || findFirstImageUrl(wechatSyncDraft.html);
+        const coverImageUrl = wechatSyncDraft.coverImageUrl || findFirstImageUrl(html);
         const accountId = nextSettings.defaultAccountId || nextAccounts[0]?.id || "";
         setForm({
           accountId,
@@ -79,7 +80,7 @@ export default function WechatSyncModal() {
 
   const hasAccounts = accounts.length > 0;
   const canSubmit = useMemo(() => {
-    return !!wechatSyncDraft && !!form.accountId && !!form.title.trim();
+    return !!wechatSyncDraft && !!form.accountId && !!form.title?.trim();
   }, [form.accountId, form.title, wechatSyncDraft]);
 
   const close = () => {
