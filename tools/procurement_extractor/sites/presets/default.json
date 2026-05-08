@@ -1,0 +1,17 @@
+{
+  "preset_name": "default",
+  "sites": [
+    {
+      "site_key": "fuyang",
+      "config_path": "../fuyang.json",
+      "enabled": true,
+      "sheet_name": "阜阳"
+    },
+    {
+      "site_key": "hefei",
+      "config_path": "../hefei.json",
+      "enabled": true,
+      "sheet_name": "合肥"
+    }
+  ]
+}

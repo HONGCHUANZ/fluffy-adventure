@@ -1,0 +1,227 @@
+{
+  "site_key": "fuyang",
+  "site_name": "阜阳市公共资源交易中心",
+  "base_url": "https://jyzx.fy.gov.cn/fuyang/",
+  "category_page_url": "https://jyzx.fy.gov.cn/fuyang/jyxx/006002/transinfogc.html",
+  "list_request": {
+    "method": "POST",
+    "url": "https://jyzx.fy.gov.cn/EpointWebBuilder/rest/GgSearchAction/getInfoMationList",
+    "headers": {
+      "User-Agent": "Mozilla/5.0",
+      "Referer": "https://jyzx.fy.gov.cn/fuyang/jyxx/006002/transinfogc.html"
+    },
+    "static_params": {
+      "siteGuid": "7eb5f7f1-9041-43ad-8e13-8fcb82ea831a",
+      "categoryNum": "006002003",
+      "xiaQuCode": "",
+      "hylb": "",
+      "jyfs": "",
+      "pageIndex": 0,
+      "pageSize": 100,
+      "YZM": "",
+      "ImgGuid": "",
+      "key": "",
+      "ismulticol": ""
+    },
+    "date_param_names": {
+      "start": "startdate",
+      "end": "enddate"
+    },
+    "list_path": "custom",
+    "response_type": "json"
+  },
+  "date_filter": {
+    "mode": "prefix",
+    "list_date_key": "infodate"
+  },
+  "attachment": {
+    "enabled": true,
+    "allowed_extensions": ["pdf"],
+    "include_keywords": ["招标文件", "采购文件", "工程量清单", "清单", "答疑", "澄清", "补遗", "更正"],
+    "exclude_keywords": ["异议", "投诉", "质疑", "复函", "立项", "批复", "核准", "审批", "操作手册", "挂网文件", ".FYZF"],
+    "max_candidates": 3,
+    "trigger_fields": [
+      "open_date",
+      "open_time",
+      "signup_deadline",
+      "project_region",
+      "bid_region",
+      "needs_construction_plan",
+      "bid_method",
+      "project_amount_wan",
+      "qualification_level",
+      "bid_bond_wan",
+      "basic_account_guarantee",
+      "builder_presentation",
+      "performance_requirement",
+      "payment_terms",
+      "duration_days",
+      "package_name"
+    ],
+    "max_file_size_bytes": 31457280
+  },
+  "fields": [
+    {
+      "name": "title",
+      "label": "项目名称",
+      "source": "list",
+      "strategy": "list_key",
+      "key": "title",
+      "required": true,
+      "postprocess": []
+    },
+    {
+      "name": "detail_url",
+      "label": "公告链接",
+      "source": "list",
+      "strategy": "list_key",
+      "key": "detail_url",
+      "required": true,
+      "postprocess": []
+    },
+    {
+      "name": "open_date",
+      "label": "开标日期",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "开标时间[：: ]*([0-9\\s]{4,}年[0-9\\s]{1,2}月[0-9\\s]{1,2}日)",
+      "required": false,
+      "postprocess": ["normalize_cn_datetime_text"]
+    },
+    {
+      "name": "open_time",
+      "label": "开标时间",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "开标时间[：: ]*[0-9\\s]{4,}年[0-9\\s]{1,2}月[0-9\\s]{1,2}日[^0-9]*([0-9\\s]{1,2}(?:[:：]|时)[0-9\\s]{2}(?:分)?)",
+      "required": false,
+      "postprocess": ["normalize_cn_datetime_text"]
+    },
+    {
+      "name": "signup_deadline",
+      "label": "报名截止日期",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "投标文件递交的截止时间[^0-9]{0,20}([0-9\\s]{4,}年[0-9\\s]{1,2}月[0-9\\s]{1,2}日[0-9\\s]{1,2}时[0-9\\s]{2}分)",
+      "required": false,
+      "postprocess": ["normalize_cn_datetime_text"]
+    },
+    {
+      "name": "project_region",
+      "label": "项目所属地",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "建设地点[：: ]*([^。；\\n]{0,40}?(?:县|市|区|镇|乡|街道))",
+      "required": false,
+      "postprocess": ["normalize_region"]
+    },
+    {
+      "name": "bid_region",
+      "label": "开标地区",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "开标地点[：: ]*([^。；\\n]{0,80})",
+      "required": false,
+      "postprocess": ["normalize_region"]
+    },
+    {
+      "name": "needs_construction_plan",
+      "label": "是否需要施组",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "([一二两2]个及以上施工组织设计|施工组织设计)",
+      "required": false,
+      "postprocess": ["mark_present"]
+    },
+    {
+      "name": "bid_method",
+      "label": "开标办法",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(动态合理价格法|综合评估法|最低评标价法|经评审的最低投标价法|评定分离)",
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "project_amount_wan",
+      "label": "项目金额（万）",
+      "source": "detail",
+      "strategy": "label_value",
+      "aliases": ["合同估算价", "估算价", "招标控制价", "最高投标限价", "总投资", "投资规模", "项目投资"],
+      "required": false,
+      "postprocess": ["normalize_amount_value"]
+    },
+    {
+      "name": "qualification_level",
+      "label": "资质等级",
+      "source": "detail",
+      "strategy": "label_value",
+      "aliases": ["投标人资质要求", "资质要求", "投标人资质"],
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "bid_bond_wan",
+      "label": "保证金（万）",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(免收|投标保证金[^0-9]{0,20}[0-9][0-9,\\.]*\\s*[万亿]?元)",
+      "required": false,
+      "postprocess": ["normalize_amount_value"]
+    },
+    {
+      "name": "basic_account_guarantee",
+      "label": "基本户保函",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(基本户保函[^。；\\n]{0,50})",
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "builder_presentation",
+      "label": "建造师现场陈述/答辩",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "((?:现场陈述|现场答辩|答辩)[^。；\\n]{0,50})",
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "performance_requirement",
+      "label": "业绩要求",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(?:投标人业绩要求|项目经理业绩要求|业绩要求)[：: ]*([^。；\\n]+)",
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "payment_terms",
+      "label": "工程款支付方式",
+      "source": "detail",
+      "strategy": "label_value",
+      "aliases": ["工程款支付方式", "付款方式", "支付方式"],
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "duration_days",
+      "label": "工期",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(?:计划工期|工期)[：: ]*([0-9]+)\\s*日历天",
+      "required": false,
+      "postprocess": []
+    },
+    {
+      "name": "package_name",
+      "label": "文件包",
+      "source": "detail",
+      "strategy": "regex",
+      "pattern": "(\\d+包)",
+      "required": false,
+      "postprocess": []
+    }
+  ]
+}
