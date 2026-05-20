@@ -42,6 +42,7 @@ function buildFallbackTitle(html: string, fallback = "未命名草稿") {
 
 export default function WechatSyncModal() {
   const { wechatSyncDraft, setWechatSyncDraft, setFactoryView } = useStore();
+  const [visible, setVisible] = useState(!!wechatSyncDraft);
   const [accounts, setAccounts] = useState<WechatAccount[]>([]);
   const [settings, setSettings] = useState<WechatSettings>({});
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -55,6 +56,10 @@ export default function WechatSyncModal() {
     author: "",
     coverImageUrl: "",
   });
+
+  useEffect(() => {
+    setVisible(!!wechatSyncDraft);
+  }, [wechatSyncDraft]);
 
   useEffect(() => {
     if (!wechatSyncDraft) return;
@@ -106,21 +111,29 @@ export default function WechatSyncModal() {
     return !!wechatSyncDraft && !!form.accountId && !!form.title?.trim();
   }, [form.accountId, form.title, wechatSyncDraft]);
 
-  if (!wechatSyncDraft) return null;
+  if (!visible || !wechatSyncDraft) return null;
 
-  const close = () => {
+  const close = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setVisible(false);
     setWechatSyncDraft(null);
     setError(null);
     setSuccess(null);
   };
 
-  const goToSettings = () => {
-    close();
+  const goToSettings = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setVisible(false);
+    setWechatSyncDraft(null);
     setFactoryView("settings");
   };
 
   const handleSubmit = async () => {
-    if (!wechatSyncDraft) return;
+    if (!wechatSyncDraft || !visible) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
