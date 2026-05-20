@@ -19,16 +19,23 @@ type WechatSettings = {
 
 function stripHtml(html: string) {
   if (typeof window === "undefined") return html;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+  if (!html || html.length > 500000) return "";
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+  } catch {
+    return "";
+  }
 }
 
 function findFirstImageUrl(html: string) {
+  if (!html || html.length > 100000) return "";
   const match = html.match(/<img[^>]+src="([^"]+)"/i);
   return match?.[1] || "";
 }
 
 function buildFallbackTitle(html: string, fallback = "未命名草稿") {
+  if (!html || html.length > 100000) return fallback;
   const heading = html.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i)?.[1]?.replace(/<[^>]+>/g, "").trim();
   return heading || fallback;
 }
@@ -51,37 +58,55 @@ export default function WechatSyncModal() {
 
   useEffect(() => {
     if (!wechatSyncDraft) return;
+
+    let cancelled = false;
     setLoadingAccounts(true);
+
     fetch("/api/wechat/accounts")
       .then((res) => res.json())
       .then((data) => {
+        if (cancelled) return;
+
         const nextAccounts = data.accounts || [];
         const nextSettings = data.settings || {};
         setAccounts(nextAccounts);
         setSettings(nextSettings);
 
-        const html = wechatSyncDraft.html || "";
-        const title = wechatSyncDraft.title || buildFallbackTitle(html, "公众号草稿");
-        const plainText = stripHtml(html);
-        const digest = wechatSyncDraft.digest || plainText.slice(0, 120);
-        const coverImageUrl = wechatSyncDraft.coverImageUrl || findFirstImageUrl(html);
-        const accountId = nextSettings.defaultAccountId || nextAccounts[0]?.id || "";
-        setForm({
-          accountId,
-          title,
-          digest,
-          author: wechatSyncDraft.author || nextSettings.defaultAuthor || "",
-          coverImageUrl,
-        });
+        setTimeout(() => {
+          if (cancelled) return;
+          const html = wechatSyncDraft.html || "";
+          const title = wechatSyncDraft.title || buildFallbackTitle(html, "公众号草稿");
+          const plainText = stripHtml(html);
+          const digest = wechatSyncDraft.digest || plainText.slice(0, 120);
+          const coverImageUrl = wechatSyncDraft.coverImageUrl || findFirstImageUrl(html);
+          const accountId = nextSettings.defaultAccountId || nextAccounts[0]?.id || "";
+          setForm({
+            accountId,
+            title,
+            digest,
+            author: wechatSyncDraft.author || nextSettings.defaultAuthor || "",
+            coverImageUrl,
+          });
+        }, 0);
       })
-      .catch((err) => setError(err.message || "加载公众号账号失败"))
-      .finally(() => setLoadingAccounts(false));
+      .catch((err) => {
+        if (!cancelled) setError(err.message || "加载公众号账号失败");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAccounts(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [wechatSyncDraft]);
 
   const hasAccounts = accounts.length > 0;
   const canSubmit = useMemo(() => {
     return !!wechatSyncDraft && !!form.accountId && !!form.title?.trim();
   }, [form.accountId, form.title, wechatSyncDraft]);
+
+  if (!wechatSyncDraft) return null;
 
   const close = () => {
     setWechatSyncDraft(null);
